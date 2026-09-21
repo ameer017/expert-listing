@@ -27,11 +27,13 @@ Queries go through `GET /api/locations`, which proxies [Photon](https://photon.k
 
 ```
 src/
-  components/LocationTypeahead.tsx   combobox UI
-  hooks/useAbortableSearch.ts        debounce + abort + generation guard
-  hooks/useDebouncedValue.ts
-  app/api/locations/route.ts         Photon proxy
-  lib/places.ts                      types + fetch client
+  components/typeahead/Location.Typeahead.tsx
+  components/typeahead/Combobox.Field.tsx
+  components/typeahead/Suggestion.Panel.tsx
+  hooks/use.Abortable.Search.ts
+  hooks/use.Debounced.Value.ts
+  app/api/locations/route.ts
+  lib/places.ts
 ```
 
 `useAbortableSearch` is generic on purpose. The listings app could reuse it for agents, estates, or postcodes without copying race-handling logic.
@@ -60,5 +62,5 @@ npm run build
 
 ## Tests worth reading
 
-- `src/hooks/useAbortableSearch.test.ts` — slower “la” must not overwrite “lagos”
-- `src/components/LocationTypeahead.test.tsx` — loading, empty, error, keyboard select, Escape
+- `src/hooks/use.Abortable.Search.test.ts` — slower “la” must not overwrite “lagos”
+- `src/components/Location.Typeahead.test.tsx` — loading, empty, error, keyboard select, Escape

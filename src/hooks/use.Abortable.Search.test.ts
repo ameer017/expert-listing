@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useAbortableSearch } from "@/hooks/useAbortableSearch";
+import { useAbortableSearch } from "@/hooks/use.Abortable.Search";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -72,6 +72,38 @@ describe("useAbortableSearch", () => {
 
     expect(result.current.results).toEqual(["Lagos"]);
     expect(result.current.status).toBe("success");
+  });
+
+  it("drops a resolve that arrives after abort invalidates the request id", async () => {
+    const first = deferred<string[]>();
+    const searchFn = vi.fn((query: string) => {
+      if (query === "la") return first.promise;
+      return Promise.resolve([]);
+    });
+
+    const { result, rerender } = renderHook(
+      ({ enabled }) =>
+        useAbortableSearch({
+          query: "la",
+          minLength: 2,
+          debounceMs: 0,
+          searchFn,
+          enabled,
+        }),
+      { initialProps: { enabled: true } },
+    );
+
+    await waitFor(() => expect(searchFn).toHaveBeenCalledTimes(1));
+    rerender({ enabled: false });
+
+    await act(async () => {
+      first.resolve(["Louisiana"]);
+      await first.promise;
+    });
+
+    expect(result.current.status).toBe("idle");
+    expect(result.current.results).toEqual([]);
+    expect(result.current.error).toBeNull();
   });
 
   it("surfaces an error state without using a stale failure", async () => {

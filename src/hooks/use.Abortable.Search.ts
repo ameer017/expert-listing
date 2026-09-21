@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SearchStatus } from "@/lib/places";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/hooks/use.Debounced.Value";
 
 type SearchFn<T> = (query: string, signal: AbortSignal) => Promise<T[]>;
 
@@ -41,12 +41,13 @@ export function useAbortableSearch<T>({
     const trimmed = debouncedQuery.trim();
 
     if (!enabled || trimmed.length < minLength) {
-      latestRequestId.current += 1;
+      const requestId = latestRequestId.current + 1;
+      latestRequestId.current = requestId;
       setState({
         status: "idle",
         results: [],
         error: null,
-        requestId: latestRequestId.current,
+        requestId,
       });
       return;
     }
@@ -64,33 +65,27 @@ export function useAbortableSearch<T>({
 
     searchFn(trimmed, controller.signal)
       .then((results) => {
+        if (controller.signal.aborted) return;
         if (requestId !== latestRequestId.current) return;
-        setState({
-          status: results.length > 0 ? "success" : "empty",
-          results,
-          error: null,
-          requestId,
-        });
+
+        const status: SearchStatus = results.length === 0 ? "empty" : "success";
+        setState({ status, results, error: null, requestId });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         if (requestId !== latestRequestId.current) return;
 
-        const message =
-          error instanceof Error && error.name !== "AbortError"
-            ? error.message
-            : "Could not search places. Try again.";
+        const message = toSearchError(error);
+        if (!message) return;
 
-        setState({
-          status: "error",
-          results: [],
-          error: message,
-          requestId,
-        });
+        setState({ status: "error", results: [], error: message, requestId });
       });
 
     return () => {
       controller.abort();
+      if (latestRequestId.current === requestId) {
+        latestRequestId.current += 1;
+      }
     };
   }, [debouncedQuery, minLength, searchFn, enabled]);
 
@@ -102,4 +97,10 @@ export function useAbortableSearch<T>({
       query.trim() !== debouncedQuery.trim() &&
       query.trim().length >= minLength,
   };
+}
+
+function toSearchError(error: unknown) {
+  if (!(error instanceof Error)) return "Could not search places. Try again.";
+  if (error.name === "AbortError") return null;
+  return error.message;
 }

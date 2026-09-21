@@ -55,6 +55,17 @@ export function highlightMatch(text: string, query: string) {
   ].filter((part) => part.value.length > 0);
 }
 
+function isPlace(value: unknown): value is Place {
+  if (!value || typeof value !== "object") return false;
+
+  const place = value as Partial<Place>;
+  if (typeof place.id !== "string") return false;
+  if (typeof place.name !== "string") return false;
+  if (typeof place.lat !== "number" || !Number.isFinite(place.lat)) return false;
+  if (typeof place.lon !== "number" || !Number.isFinite(place.lon)) return false;
+  return true;
+}
+
 export async function searchPlaces(
   query: string,
   signal: AbortSignal,
@@ -73,5 +84,9 @@ export async function searchPlaces(
   }
 
   const payload = (await response.json()) as PlaceSearchResponse;
-  return payload.results;
+  if (payload.query !== query || !Array.isArray(payload.results)) {
+    return [];
+  }
+
+  return payload.results.filter(isPlace);
 }

@@ -34,18 +34,15 @@ const cache = new Map<string, CacheEntry>();
 function getCached(key: string) {
   const entry = cache.get(key);
   if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    cache.delete(key);
-    return null;
-  }
-  return entry.results;
+  if (Date.now() <= entry.expiresAt) return entry.results;
+
+  cache.delete(key);
+  return null;
 }
 
 function setCached(key: string, results: Place[]) {
-  if (cache.size >= CACHE_MAX) {
-    const oldest = cache.keys().next().value;
-    if (oldest) cache.delete(oldest);
-  }
+  const oldest = cache.keys().next().value;
+  if (cache.size >= CACHE_MAX && oldest) cache.delete(oldest);
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, results });
 }
 
@@ -57,17 +54,20 @@ function labelFor(feature: PhotonFeature) {
 
 function secondaryFor(feature: PhotonFeature) {
   const p = feature.properties ?? {};
-  const parts = [p.district, p.city, p.state, p.country, p.postcode].filter(
-    (part, index, all) => Boolean(part) && all.indexOf(part) === index,
+  return [...new Set([p.district, p.city, p.state, p.country, p.postcode].filter(Boolean))].join(
+    ", ",
   );
-  return parts.join(", ");
 }
 
 function toPlace(feature: PhotonFeature, index: number): Place | null {
   const coords = feature.geometry?.coordinates;
   if (!coords || coords.length < 2) return null;
 
-  const [lon, lat] = coords;
+  const lon = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+
   const p = feature.properties ?? {};
   const id = p.osm_type && p.osm_id ? `${p.osm_type}:${p.osm_id}` : `feature:${index}`;
 
@@ -85,16 +85,25 @@ function toPlace(feature: PhotonFeature, index: number): Place | null {
   };
 }
 
+function uniquePlaces(places: Place[]) {
+  const seen = new Set<string>();
+  return places.flatMap((place) => {
+    if (seen.has(place.id)) return [];
+    seen.add(place.id);
+    return [place];
+  });
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = (searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY_LENGTH);
-  const slow = searchParams.get("slow") === "1";
+  const slow = searchParams.get("slow") === "1" && process.env.NODE_ENV !== "production";
 
   if (query.length < 2) {
     return NextResponse.json({ error: "Query must be at least 2 characters." }, { status: 400 });
   }
 
-  const cacheKey = `ng:${query.toLowerCase()}`;
+  const cacheKey = `ng-unique:${query.toLowerCase()}`;
   const cached = getCached(cacheKey);
   if (cached && !slow) {
     return NextResponse.json(
@@ -127,12 +136,15 @@ export async function GET(request: Request) {
     }
 
     const payload = (await upstream.json()) as { features?: PhotonFeature[] };
-    const results = (payload.features ?? [])
-      .map(toPlace)
-      .filter((place): place is Place => place !== null);
+    const results = uniquePlaces(
+      (payload.features ?? []).flatMap((feature, index) => {
+        const place = toPlace(feature, index);
+        if (!place) return [];
+        return [place];
+      }),
+    );
 
     if (slow) {
-      // Lets reviewers type quickly and watch stale responses get dropped.
       await new Promise((resolve) => setTimeout(resolve, 900 + Math.random() * 700));
     }
 
@@ -140,10 +152,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ query, results });
   } catch (error) {
-    const timedOut = error instanceof Error && error.name === "TimeoutError";
-    return NextResponse.json(
-      { error: timedOut ? "Location search timed out." : "Could not reach the location service." },
-      { status: timedOut ? 504 : 502 },
-    );
+    if (error instanceof Error && error.name === "TimeoutError") {
+      return NextResponse.json({ error: "Location search timed out." }, { status: 504 });
+    }
+
+    return NextResponse.json({ error: "Could not reach the location service." }, { status: 502 });
   }
 }

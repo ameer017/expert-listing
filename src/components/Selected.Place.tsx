@@ -1,15 +1,7 @@
 import { formatKind, type Place } from "@/lib/places";
+import { PlaceMap } from "@/components/place/Place.Map";
 
 export function SelectedPlace({ place }: { place: Place }) {
-  const bbox = [
-    place.lon - 0.03,
-    place.lat - 0.02,
-    place.lon + 0.03,
-    place.lat + 0.02,
-  ].join(",");
-
-  const mapSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${place.lat}%2C${place.lon}`;
-
   return (
     <section className="overflow-hidden rounded-3xl border border-line bg-white shadow-[0_24px_60px_-36px_rgba(18,32,24,0.4)]">
       <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
@@ -34,11 +26,7 @@ export function SelectedPlace({ place }: { place: Place }) {
         </div>
 
         <div className="min-h-64 border-t border-line lg:border-l lg:border-t-0">
-          <iframe
-            title={`Map of ${place.name}`}
-            src={mapSrc}
-            className="h-full min-h-64 w-full grayscale-[0.15] contrast-[1.05]"
-          />
+          <PlaceMap place={place} />
         </div>
       </div>
     </section>

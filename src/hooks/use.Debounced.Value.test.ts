@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/hooks/use.Debounced.Value";
 
 describe("useDebouncedValue", () => {
   it("returns the latest value only after the delay", () => {
