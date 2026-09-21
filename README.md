@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Expert Listing — location typeahead
 
-## Getting Started
+Screening task for the Frontend Engineer role at [Expert Listing](mailto:recruitment@expertlisting.ng): a small, production-shaped **typeahead** over a public geocoding API.
 
-First, run the development server:
+The UI is a neighbourhood search — the same interaction a Lagos listings platform needs before maps, price history, or flood-risk overlays ever load.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Requirements coverage
+
+| Requirement | Implementation |
+| --- | --- |
+| Debounced input | `useDebouncedValue` waits **280ms** after the last keystroke; searches start at **2 characters**. |
+| Loading / empty / error | Spinner + “Checking verified places…”, empty copy for zero hits, error copy on non-OK responses. A polite live region announces the state. |
+| Keyboard navigation | WAI-ARIA combobox: `ArrowUp` / `ArrowDown` move highlight, `Enter` selects, `Escape` closes. |
+| Out-of-order / stale responses | **AbortController** cancels the in-flight request; a **monotonic request id** ignores any response that is no longer current. |
+
+Turn on **Simulate slow / racing responses** in the UI to add 0.9–1.6s of jitter and type quickly — the list should still match the latest query.
+
+## Why this API
+
+Queries go through `GET /api/locations`, which proxies [Photon](https://photon.komoot.io/) (OpenStreetMap geocoding).
+
+- Location search is the actual product surface, not a toy countries list.
+- Results are **bounded to Nigeria** and biased toward **Lagos**, matching Expert Listing’s market.
+- The browser never talks to Photon directly: CORS, timeouts, and a short in-memory cache stay on the server.
+
+## Architecture
+
+```
+src/
+  components/LocationTypeahead.tsx   combobox UI
+  hooks/useAbortableSearch.ts        debounce + abort + generation guard
+  hooks/useDebouncedValue.ts
+  app/api/locations/route.ts         Photon proxy
+  lib/places.ts                      types + fetch client
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`useAbortableSearch` is generic on purpose. The listings app could reuse it for agents, estates, or postcodes without copying race-handling logic.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Run it
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+Open [http://localhost:3000](http://localhost:3000).
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm test      # vitest: debounce, stale responses, keyboard, empty/error
+npm run lint
+npm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Tradeoffs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **280ms debounce** is a balance between Photon rate limits and feeling instant. Faster would hammer the API; slower would feel sticky on mobile.
+- **Abort + request ids** together: `fetch` abort covers the common case; the id covers responses that resolve after abort (or mocks that ignore `AbortSignal`).
+- **No client cache** of search results. The route caches identical queries for five minutes; the client always reflects the current keystrokes.
+- **Photon, not Google Places.** No API key, good enough for a screening task, and the contract is easy to swap for a paid geocoder later.
 
-## Deploy on Vercel
+## Tests worth reading
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/hooks/useAbortableSearch.test.ts` — slower “la” must not overwrite “lagos”
+- `src/components/LocationTypeahead.test.tsx` — loading, empty, error, keyboard select, Escape
